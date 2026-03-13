@@ -1,0 +1,14 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.noticesRoutes = void 0;
+const express_1 = require("express");
+const auth_1 = require("../../middleware/auth");
+const rbac_1 = require("../../middleware/rbac");
+const validate_1 = require("../../middleware/validate");
+const notices_controller_1 = require("./notices.controller");
+const notices_schemas_1 = require("./notices.schemas");
+exports.noticesRoutes = (0, express_1.Router)();
+exports.noticesRoutes.get("/", auth_1.requireAuth, notices_controller_1.NoticesController.list);
+exports.noticesRoutes.post("/", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN"), (0, validate_1.validateBody)(notices_schemas_1.createNoticeSchema), notices_controller_1.NoticesController.create);
+exports.noticesRoutes.patch("/:id", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN"), (0, validate_1.validateBody)(notices_schemas_1.updateNoticeSchema), notices_controller_1.NoticesController.update);
+exports.noticesRoutes.delete("/:id", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN"), notices_controller_1.NoticesController.remove);

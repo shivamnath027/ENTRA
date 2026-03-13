@@ -1,0 +1,16 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.billingRoutes = void 0;
+const express_1 = require("express");
+const auth_1 = require("../../middleware/auth");
+const rbac_1 = require("../../middleware/rbac");
+const validate_1 = require("../../middleware/validate");
+const billing_controller_1 = require("./billing.controller");
+const billing_schemas_1 = require("./billing.schemas");
+exports.billingRoutes = (0, express_1.Router)();
+exports.billingRoutes.post("/bills", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN"), (0, validate_1.validateBody)(billing_schemas_1.createBillSchema), billing_controller_1.BillingController.createBill);
+exports.billingRoutes.post("/bills/bulk", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN"), (0, validate_1.validateBody)(billing_schemas_1.bulkCreateBillsSchema), billing_controller_1.BillingController.bulkCreate);
+exports.billingRoutes.get("/bills", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN", "RESIDENT"), billing_controller_1.BillingController.listBills);
+exports.billingRoutes.post("/payments/initiate", auth_1.requireAuth, (0, rbac_1.requireRoles)("RESIDENT"), (0, validate_1.validateBody)(billing_schemas_1.initiatePaymentSchema), billing_controller_1.BillingController.initiatePayment);
+exports.billingRoutes.post("/payments/confirm", auth_1.requireAuth, (0, rbac_1.requireRoles)("RESIDENT", "ADMIN"), (0, validate_1.validateBody)(billing_schemas_1.confirmPaymentSchema), billing_controller_1.BillingController.confirmPayment);
+exports.billingRoutes.get("/ledger", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN"), billing_controller_1.BillingController.ledger);

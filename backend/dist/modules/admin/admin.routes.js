@@ -1,0 +1,18 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.adminRoutes = void 0;
+const express_1 = require("express");
+const auth_1 = require("../../middleware/auth");
+const rbac_1 = require("../../middleware/rbac");
+const validate_1 = require("../../middleware/validate");
+const admin_controller_1 = require("./admin.controller");
+const admin_schemas_1 = require("./admin.schemas");
+exports.adminRoutes = (0, express_1.Router)();
+exports.adminRoutes.get("/kpis", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN"), admin_controller_1.AdminController.kpis);
+exports.adminRoutes.get("/users", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN"), admin_controller_1.AdminController.listUsers);
+exports.adminRoutes.post("/users", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN"), (0, validate_1.validateBody)(admin_schemas_1.createUserSchema), admin_controller_1.AdminController.createUser);
+exports.adminRoutes.patch("/users/:id", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN"), (0, validate_1.validateBody)(admin_schemas_1.updateUserSchema), admin_controller_1.AdminController.updateUser);
+exports.adminRoutes.get("/blocks", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN"), admin_controller_1.AdminController.listBlocks);
+exports.adminRoutes.post("/blocks", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN"), (0, validate_1.validateBody)(admin_schemas_1.createBlockSchema), admin_controller_1.AdminController.createBlock);
+exports.adminRoutes.get("/flats", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN"), admin_controller_1.AdminController.listFlats);
+exports.adminRoutes.post("/flats", auth_1.requireAuth, (0, rbac_1.requireRoles)("ADMIN"), (0, validate_1.validateBody)(admin_schemas_1.createFlatSchema), admin_controller_1.AdminController.createFlat);
