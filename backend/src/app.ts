@@ -19,7 +19,7 @@ app.use(express.json());
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.use("/api/auth", authRoutes);
-app.use("/api", usersRoutes);
+app.use("/api/users", usersRoutes);
 app.use("/api/visitors", visitorsRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/notices", noticesRoutes);
