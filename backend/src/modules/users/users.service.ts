@@ -38,6 +38,18 @@ export class UsersService {
             name: row.block_name,
           }
         : null,
+      guardProfile: row.guard_user_id
+        ? {
+            userId: row.guard_user_id,
+            assignedGateId: row.assigned_gate_id,
+          }
+        : null,
+      gate: row.gate_id
+        ? {
+            id: row.gate_id,
+            name: row.gate_name,
+          }
+        : null,
     };
   }
 }

@@ -185,57 +185,75 @@ export class VehiclesService {
 
   // Guard scan -> decision -> (optionally) open gate
   static async scanVehicle(params: {
-    societyId: string;
-    userId: string;
-    role: UserRole;
-    body: any;
-  }) {
-    if (params.role !== "GUARD") throw forbidden("Only guards can scan vehicles.");
+  societyId: string;
+  userId: string;
+  role: UserRole;
+  body: any;
+}) {
+  if (params.role !== "GUARD") throw forbidden("Only guards can scan vehicles.");
 
-    const { gateId, tagUid, vehicleNumber } = params.body;
+  const { tagUid, vehicleNumber } = params.body;
 
-    const decision = await engine.decide({
-      societyId: params.societyId,
-      gateId,
-      tagUid: tagUid ?? null,
-      vehicleNumber: vehicleNumber ?? null
-    });
+  const guardProfile = await VehiclesRepository.getGuardProfileWithGate(
+    params.userId,
+    params.societyId
+  );
 
-    const controller = await VehiclesRepository.getGateControllerByGateId(gateId);
-
-    // Conceptual auto-open: only if ALLOW and controller exists
-    // We won’t actually call the hardware here yet; we’ll return a command payload.
-    const shouldAutoOpen = decision.decision === "ALLOW" && !!controller;
-
-    const event = await VehiclesRepository.logAccessEvent({
-      societyId: params.societyId,
-      gateId,
-      controllerId: controller?.id ?? null,
-      scannedByGuardId: params.userId,
-      tagUid: tagUid ?? null,
-      vehicleNumber: vehicleNumber ?? null,
-      vehicleId: decision.vehicleId ?? null,
-      flatId: decision.flatId ?? null,
-      decision: decision.decision,
-      reason: decision.reason,
-      openedGate: shouldAutoOpen
-    });
-
-    return {
-      decision: decision.decision,
-      reason: decision.reason,
-      resolved: { vehicleId: decision.vehicleId ?? null, flatId: decision.flatId ?? null },
-      autoOpen: shouldAutoOpen
-        ? {
-            controllerId: controller!.id,
-            gateId,
-            command: "OPEN_GATE",
-            // Your guard app can either show “Auto-open triggered”
-            // or call a backend endpoint that triggers controller command.
-            note: "Controller configured; auto-open permitted."
-          }
-        : null,
-      eventId: event.id
-    };
+  if (!guardProfile) {
+    throw forbidden("Guard profile not found.");
   }
+
+  if (!guardProfile.assigned_gate_id) {
+    throw badRequest("No gate assigned to this guard.");
+  }
+
+  const gateId = guardProfile.assigned_gate_id;
+
+  const decision = await engine.decide({
+    societyId: params.societyId,
+    gateId,
+    tagUid: tagUid ?? null,
+    vehicleNumber: vehicleNumber ?? null
+  });
+
+  const controller = await VehiclesRepository.getGateControllerByGateId(gateId);
+
+  const shouldAutoOpen = decision.decision === "ALLOW" && !!controller;
+
+  const event = await VehiclesRepository.logAccessEvent({
+    societyId: params.societyId,
+    gateId,
+    controllerId: controller?.id ?? null,
+    scannedByGuardId: params.userId,
+    tagUid: tagUid ?? null,
+    vehicleNumber: vehicleNumber ?? null,
+    vehicleId: decision.vehicleId ?? null,
+    flatId: decision.flatId ?? null,
+    decision: decision.decision,
+    reason: decision.reason,
+    openedGate: shouldAutoOpen
+  });
+
+  return {
+    decision: decision.decision,
+    reason: decision.reason,
+    resolved: {
+      vehicleId: decision.vehicleId ?? null,
+      flatId: decision.flatId ?? null
+    },
+    guardGate: {
+      id: gateId,
+      name: guardProfile.gate_name ?? null
+    },
+    autoOpen: shouldAutoOpen
+      ? {
+          controllerId: controller!.id,
+          gateId,
+          command: "OPEN_GATE",
+          note: "Controller configured; auto-open permitted."
+        }
+      : null,
+    eventId: event.id
+  };
+}
 }

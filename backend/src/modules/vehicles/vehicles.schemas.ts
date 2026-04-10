@@ -16,7 +16,6 @@ export const updateVehicleSchema = z.object({
 });
 
 export const scanVehicleSchema = z.object({
-  gateId: z.string().uuid(),
   tagUid: z.string().min(3).max(64).optional().nullable(),
   vehicleNumber: z.string().min(3).max(20).optional().nullable()
 }).refine((v) => v.tagUid || v.vehicleNumber, {

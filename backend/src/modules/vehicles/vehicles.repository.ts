@@ -63,6 +63,7 @@ export class VehiclesRepository {
 ];
 
 
+
     const sets: string[] = [];
     const vals: any[] = [id, societyId];
     let idx = 3;
@@ -149,4 +150,25 @@ export class VehiclesRepository {
     ]);
     return r.rows[0];
   }
+
+    static async getGuardProfileWithGate(userId: string, societyId: string) {
+  const r = await pool.query(
+    `
+    SELECT
+      gp.user_id,
+      gp.assigned_gate_id,
+      g.name AS gate_name
+    FROM guard_profiles gp
+    INNER JOIN users u
+      ON u.id = gp.user_id
+    LEFT JOIN gates g
+      ON g.id = gp.assigned_gate_id
+    WHERE gp.user_id = $1
+      AND u.society_id = $2
+    LIMIT 1
+    `,
+    [userId, societyId]
+  );
+  return r.rows[0] ?? null;
+}
 }

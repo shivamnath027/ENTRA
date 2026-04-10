@@ -18,6 +18,11 @@ export type MeRow = {
 
   block_id: string | null;
   block_name: string | null;
+
+  guard_user_id: string | null;
+  assigned_gate_id: string | null;
+  gate_id: string | null;
+  gate_name: string | null;
 };
 
 export class UsersRepository {
@@ -40,7 +45,13 @@ export class UsersRepository {
         f.flat_number,
 
         b.id AS block_id,
-        b.name AS block_name
+        b.name AS block_name,
+
+        gp.user_id AS guard_user_id,
+        gp.assigned_gate_id AS assigned_gate_id,
+
+        g.id AS gate_id,
+        g.name AS gate_name
       FROM users u
       INNER JOIN societies s
         ON s.id = u.society_id
@@ -50,6 +61,10 @@ export class UsersRepository {
         ON f.id = rp.flat_id
       LEFT JOIN blocks b
         ON b.id = f.block_id
+      LEFT JOIN guard_profiles gp
+        ON gp.user_id = u.id
+      LEFT JOIN gates g
+        ON g.id = gp.assigned_gate_id
       WHERE u.id = $1
       LIMIT 1
     `;
