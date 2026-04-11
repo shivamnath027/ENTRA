@@ -17,7 +17,6 @@ export const requestDecisionSchema = z.object({
 });
 
 export const gateCreateEntrySchema = z.object({
-  gateId: z.string().uuid(),
   visitorRequestId: z.string().uuid().optional().nullable(),
   flatId: z.string().uuid().optional().nullable(),
   visitorName: z.string().min(1).optional().nullable(),

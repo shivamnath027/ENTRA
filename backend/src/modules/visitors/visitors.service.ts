@@ -126,89 +126,102 @@ export class VisitorsService {
 
   // Guard creates entry: from request OR ad-hoc
   static async createGateEntry(params: {
-    societyId: string;
-    userId: string;
-    role: UserRole;
-    body: any;
-  }) {
-    if (params.role !== "GUARD") throw forbidden("Only guards can create gate entries.");
+  societyId: string;
+  userId: string;
+  role: UserRole;
+  body: any;
+}) {
+  if (params.role !== "GUARD") throw forbidden("Only guards can create gate entries.");
 
-    const { gateId, visitorRequestId, flatId } = params.body;
+  const { visitorRequestId, flatId } = params.body;
 
-    // if visitorRequestId provided, load request and derive details
-    if (visitorRequestId) {
-      const reqRow = await VisitorsRepository.getVisitorRequestById(visitorRequestId);
-      if (!reqRow) throw notFound("Visitor request not found.");
-      if (reqRow.society_id !== params.societyId) throw forbidden("Cross-society denied.");
+  const guardProfile = await VisitorsRepository.getGuardProfileWithGate(
+    params.userId,
+    params.societyId
+  );
 
-      // Create entry in WAITING_APPROVAL unless already approved
-      const status = reqRow.status === "APPROVED" ? "IN" : "WAITING_APPROVAL";
-      const inAt = reqRow.status === "APPROVED" ? new Date() : null;
+  if (!guardProfile) {
+    throw forbidden("Guard profile not found.");
+  }
 
-      const entry = await VisitorsRepository.createEntry({
-        societyId: params.societyId,
-        gateId,
-        visitorRequestId,
-        flatId: reqRow.flat_id,
-        visitorName: reqRow.visitor_name,
-        visitorPhone: reqRow.visitor_phone,
-        vehicleNumber: reqRow.vehicle_number,
-        purpose: reqRow.purpose,
-        enteredByGuardId: params.userId,
-        inPhotoUrl: params.body.inPhotoUrl ?? null,
-        status,
-        inAt
-      });
+  if (!guardProfile.assigned_gate_id) {
+    throw badRequest("No gate assigned to this guard.");
+  }
 
-      // Notify residents: visitor arrived / needs approval
-      // Emit event (Observer Pattern)
-      await eventBus.emit({
-        type: "VISITOR_ARRIVED",
-        societyId: params.societyId,
-        flatId: entry.flat_id,
-        entryId: entry.id,
-        visitorName: entry.visitor_name,
-        requestId: entry.visitor_request_id
-      });
+  const gateId = guardProfile.assigned_gate_id;
 
-      return entry;
-    }
+  if (visitorRequestId) {
+    const existingActiveEntry = await VisitorsRepository.findActiveEntryByRequestId(visitorRequestId);
+if (existingActiveEntry) {
+  throw badRequest("An active entry already exists for this request.");
+}
+    const reqRow = await VisitorsRepository.getVisitorRequestById(visitorRequestId);
+    if (!reqRow) throw notFound("Visitor request not found.");
+    if (reqRow.society_id !== params.societyId) throw forbidden("Cross-society denied.");
 
-    // Ad-hoc path requires explicit flat + visitor details
-    if (!flatId) throw badRequest("flatId is required for ad-hoc entry.");
-    if (!params.body.visitorName) throw badRequest("visitorName is required for ad-hoc entry.");
+    const status = reqRow.status === "APPROVED" ? "IN" : "WAITING_APPROVAL";
+    const inAt = reqRow.status === "APPROVED" ? new Date() : null;
 
     const entry = await VisitorsRepository.createEntry({
       societyId: params.societyId,
       gateId,
-      visitorRequestId: null,
-      flatId,
-      visitorName: params.body.visitorName,
-      visitorPhone: params.body.visitorPhone ?? null,
-      vehicleNumber: params.body.vehicleNumber ?? null,
-      purpose: params.body.purpose ?? null,
+      visitorRequestId,
+      flatId: reqRow.flat_id,
+      visitorName: reqRow.visitor_name,
+      visitorPhone: reqRow.visitor_phone,
+      vehicleNumber: reqRow.vehicle_number,
+      purpose: reqRow.purpose,
       enteredByGuardId: params.userId,
       inPhotoUrl: params.body.inPhotoUrl ?? null,
-      status: "WAITING_APPROVAL",
-      inAt: null
+      status,
+      inAt
     });
 
-    // Notify residents for approval
-    const residents = await VisitorsRepository.getResidentsForFlat(flatId);
-    for (const r of residents) {
-      await VisitorsRepository.enqueueNotification({
-        societyId: params.societyId,
-        userId: r.id,
-        type: "ADHOC_VISITOR_ARRIVED",
-        title: "Ad-hoc visitor at gate",
-        body: `${params.body.visitorName} is requesting entry.`,
-        channel: "IN_APP",
-        meta: { entryId: entry.id, flatId }
-      });
-    }
+    await eventBus.emit({
+      type: "VISITOR_ARRIVED",
+      societyId: params.societyId,
+      flatId: entry.flat_id,
+      entryId: entry.id,
+      visitorName: entry.visitor_name,
+      requestId: entry.visitor_request_id
+    });
 
     return entry;
   }
+
+  if (!flatId) throw badRequest("flatId is required for ad-hoc entry.");
+  if (!params.body.visitorName) throw badRequest("visitorName is required for ad-hoc entry.");
+
+  const entry = await VisitorsRepository.createEntry({
+    societyId: params.societyId,
+    gateId,
+    visitorRequestId: null,
+    flatId,
+    visitorName: params.body.visitorName,
+    visitorPhone: params.body.visitorPhone ?? null,
+    vehicleNumber: params.body.vehicleNumber ?? null,
+    purpose: params.body.purpose ?? null,
+    enteredByGuardId: params.userId,
+    inPhotoUrl: params.body.inPhotoUrl ?? null,
+    status: "WAITING_APPROVAL",
+    inAt: null
+  });
+
+  const residents = await VisitorsRepository.getResidentsForFlat(flatId);
+  for (const r of residents) {
+    await VisitorsRepository.enqueueNotification({
+      societyId: params.societyId,
+      userId: r.id,
+      type: "ADHOC_VISITOR_ARRIVED",
+      title: "Ad-hoc visitor at gate",
+      body: `${params.body.visitorName} is requesting entry.`,
+      channel: "IN_APP",
+      meta: { entryId: entry.id, flatId }
+    });
+  }
+
+  return entry;
+}
 
   static async markIn(params: {
     societyId: string;

@@ -1,6 +1,39 @@
 import { pool } from "../../config/db";
 
 export class VisitorsRepository {
+
+  static async findActiveEntryByRequestId(visitorRequestId: string) {
+  const q = `
+    SELECT *
+    FROM visitor_entries
+    WHERE visitor_request_id = $1
+      AND status IN ('WAITING_APPROVAL', 'IN')
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+  const r = await pool.query(q, [visitorRequestId]);
+  return r.rows[0] ?? null;
+}
+
+  static async getGuardProfileWithGate(userId: string, societyId: string) {
+  const q = `
+    SELECT
+      gp.user_id,
+      gp.assigned_gate_id,
+      g.name AS gate_name
+    FROM guard_profiles gp
+    INNER JOIN users u
+      ON u.id = gp.user_id
+    LEFT JOIN gates g
+      ON g.id = gp.assigned_gate_id
+    WHERE gp.user_id = $1
+      AND u.society_id = $2
+    LIMIT 1
+  `;
+  const r = await pool.query(q, [userId, societyId]);
+  return r.rows[0] ?? null;
+}
+
   // --- Authorization helpers ---
   static async residentHasFlatAccess(userId: string, flatId: string): Promise<boolean> {
     const q = `SELECT 1 FROM resident_profiles WHERE user_id = $1 AND flat_id = $2 LIMIT 1`;
@@ -101,23 +134,45 @@ export class VisitorsRepository {
 
   // --- Guard lists requests ---
   static async listRequestsForSociety(params: {
-    societyId: string;
-    status?: string | null;
-    limit: number;
-    offset: number;
-  }) {
-    const q = `
-      SELECT id, flat_id, visitor_name, visitor_phone, vehicle_number, purpose,
-             expected_at, status, created_at, valid_from, valid_until
-      FROM visitor_requests
-      WHERE society_id = $1
-        AND ($2::text IS NULL OR status = $2)
-      ORDER BY created_at DESC
-      LIMIT $3 OFFSET $4
-    `;
-    const r = await pool.query(q, [params.societyId, params.status ?? null, params.limit, params.offset]);
-    return r.rows;
-  }
+  societyId: string;
+  status?: string | null;
+  limit: number;
+  offset: number;
+}) {
+  const q = `
+    SELECT
+      vr.id,
+      vr.flat_id,
+      f.flat_number,
+      b.name AS block_name,
+      vr.visitor_name,
+      vr.visitor_phone,
+      vr.vehicle_number,
+      vr.purpose,
+      vr.expected_at,
+      vr.status,
+      vr.created_at,
+      vr.valid_from,
+      vr.valid_until,
+      EXISTS (
+        SELECT 1
+        FROM visitor_entries ve
+        WHERE ve.visitor_request_id = vr.id
+          AND ve.status IN ('WAITING_APPROVAL', 'IN')
+      ) AS has_active_entry
+    FROM visitor_requests vr
+    LEFT JOIN flats f
+      ON f.id = vr.flat_id
+    LEFT JOIN blocks b
+      ON b.id = f.block_id
+    WHERE vr.society_id = $1
+      AND ($2::text IS NULL OR vr.status = $2)
+    ORDER BY vr.created_at DESC
+    LIMIT $3 OFFSET $4
+  `;
+  const r = await pool.query(q, [params.societyId, params.status ?? null, params.limit, params.offset]);
+  return r.rows;
+}
 
   // --- Gate: create entry (from request or ad-hoc) ---
   static async createEntry(params: {
