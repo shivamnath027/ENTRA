@@ -116,7 +116,20 @@ export class VisitorsController {
       next(e);
     }
   }
+static async findFlat(req: Request, res: Response, next: NextFunction) {
+  try {
+    const out = await VisitorsService.findFlatForGateEntry({
+      societyId: req.user!.societyId,
+      role: req.user!.role,
+      blockName: String(req.query.blockName ?? ""),
+      flatNumber: String(req.query.flatNumber ?? "")
+    });
 
+    res.json({ ok: true, flat: out });
+  } catch (e) {
+    next(e);
+  }
+}
   static async listEntries(req: Request, res: Response, next: NextFunction) {
     try {
         if (req.user!.role === "RESIDENT") {

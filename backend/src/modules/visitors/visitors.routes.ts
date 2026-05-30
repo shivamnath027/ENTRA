@@ -13,6 +13,13 @@ import {
 
 export const visitorsRoutes = Router();
 
+visitorsRoutes.get(
+  "/gate/flats/find",
+  requireAuth,
+  requireRoles("GUARD", "ADMIN"),
+  VisitorsController.findFlat
+);
+
 // Resident endpoints
 visitorsRoutes.post(
   "/requests",

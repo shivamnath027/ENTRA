@@ -91,7 +91,10 @@ export class VisitorsService {
       approvedByUserId: params.userId,
       rejectedReason: status === "REJECTED" ? (params.reason ?? "Rejected") : null
     });
-
+    await VisitorsRepository.updateEntriesAfterRequestDecision({
+      requestId: params.requestId,
+      status
+    });
     // Notify all residents of the flat (in-app now; push later)
     // Emit event (Observer Pattern)
     await eventBus.emit({
@@ -190,22 +193,43 @@ if (existingActiveEntry) {
   }
 
   if (!flatId) throw badRequest("flatId is required for ad-hoc entry.");
-  if (!params.body.visitorName) throw badRequest("visitorName is required for ad-hoc entry.");
+if (!params.body.visitorName) throw badRequest("visitorName is required for ad-hoc entry.");
+const flatRow = await VisitorsRepository.getFlatWithSociety(flatId);
 
-  const entry = await VisitorsRepository.createEntry({
-    societyId: params.societyId,
-    gateId,
-    visitorRequestId: null,
-    flatId,
-    visitorName: params.body.visitorName,
-    visitorPhone: params.body.visitorPhone ?? null,
-    vehicleNumber: params.body.vehicleNumber ?? null,
-    purpose: params.body.purpose ?? null,
-    enteredByGuardId: params.userId,
-    inPhotoUrl: params.body.inPhotoUrl ?? null,
-    status: "WAITING_APPROVAL",
-    inAt: null
-  });
+if (!flatRow) {
+  throw notFound("Flat not found.");
+}
+
+if (flatRow.society_id !== params.societyId) {
+  throw forbidden("This flat does not belong to the guard's society.");
+}
+const request = await VisitorsRepository.createVisitorRequest({
+  societyId: params.societyId,
+  flatId,
+  createdByUserId: params.userId,
+  visitorName: params.body.visitorName,
+  visitorPhone: params.body.visitorPhone ?? null,
+  vehicleNumber: params.body.vehicleNumber ?? null,
+  purpose: params.body.purpose ?? "Guest",
+  expectedAt: null,
+  validFrom: null,
+  validUntil: null
+});
+
+const entry = await VisitorsRepository.createEntry({
+  societyId: params.societyId,
+  gateId,
+  visitorRequestId: request.id,
+  flatId,
+  visitorName: params.body.visitorName,
+  visitorPhone: params.body.visitorPhone ?? null,
+  vehicleNumber: params.body.vehicleNumber ?? null,
+  purpose: params.body.purpose ?? "Guest",
+  enteredByGuardId: params.userId,
+  inPhotoUrl: params.body.inPhotoUrl ?? null,
+  status: "WAITING_APPROVAL",
+  inAt: null
+});
 
   const residents = await VisitorsRepository.getResidentsForFlat(flatId);
   for (const r of residents) {
@@ -221,6 +245,37 @@ if (existingActiveEntry) {
   }
 
   return entry;
+}
+
+static async findFlatForGateEntry(params: {
+  societyId: string;
+  role: UserRole;
+  blockName: string;
+  flatNumber: string;
+}) {
+  if (params.role !== "GUARD" && params.role !== "ADMIN") {
+    throw forbidden("Only guards/admin can search flats.");
+  }
+
+  if (!params.blockName?.trim()) {
+    throw badRequest("blockName is required.");
+  }
+
+  if (!params.flatNumber?.trim()) {
+    throw badRequest("flatNumber is required.");
+  }
+
+  const flat = await VisitorsRepository.findFlatForSociety({
+    societyId: params.societyId,
+    blockName: params.blockName.trim(),
+    flatNumber: params.flatNumber.trim()
+  });
+
+  if (!flat) {
+    throw notFound("Flat not found for this society.");
+  }
+
+  return flat;
 }
 
   static async markIn(params: {
@@ -239,6 +294,17 @@ if (existingActiveEntry) {
 
     // NOTE: In a stricter design, we'd ensure request is APPROVED before IN.
     // For MVP: guard marks IN after resident approval notification.
+    if (entry.visitor_request_id) {
+  const reqRow = await VisitorsRepository.getVisitorRequestById(entry.visitor_request_id);
+
+  if (!reqRow) {
+    throw notFound("Linked visitor request not found.");
+  }
+
+  if (reqRow.status !== "APPROVED") {
+    throw badRequest("Resident approval is required before marking IN.");
+  }
+}
     return VisitorsRepository.markEntryIn({
       entryId: params.entryId,
       guardId: params.userId,

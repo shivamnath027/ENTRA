@@ -240,6 +240,35 @@ export class VisitorsRepository {
     return r.rows[0] ?? null;
   }
 
+  static async updateEntriesAfterRequestDecision(params: {
+  requestId: string;
+  status: "APPROVED" | "REJECTED";
+}) {
+  if (params.status === "APPROVED") {
+    const q = `
+      UPDATE visitor_entries
+      SET updated_at = now()
+      WHERE visitor_request_id = $1
+        AND status = 'WAITING_APPROVAL'
+      RETURNING *
+    `;
+    const r = await pool.query(q, [params.requestId]);
+    return r.rows;
+  }
+
+  const q = `
+    UPDATE visitor_entries
+    SET status = 'DENIED',
+        updated_at = now()
+    WHERE visitor_request_id = $1
+      AND status = 'WAITING_APPROVAL'
+    RETURNING *
+  `;
+
+  const r = await pool.query(q, [params.requestId]);
+  return r.rows;
+}
+
   static async markEntryOut(params: {
     entryId: string;
     outPhotoUrl?: string | null;
@@ -256,38 +285,102 @@ export class VisitorsRepository {
     const r = await pool.query(q, [params.entryId, params.outPhotoUrl ?? null]);
     return r.rows[0] ?? null;
   }
+static async getFlatWithSociety(flatId: string) {
+  const q = `
+    SELECT
+      f.id,
+      f.flat_number,
+      b.id AS block_id,
+      b.name AS block_name,
+      b.society_id
+    FROM flats f
+    JOIN blocks b
+      ON b.id = f.block_id
+    WHERE f.id = $1
+    LIMIT 1
+  `;
+
+  const r = await pool.query(q, [flatId]);
+  return r.rows[0] ?? null;
+}
+
+static async findFlatForSociety(params: {
+  societyId: string;
+  blockName: string;
+  flatNumber: string;
+}) {
+  const q = `
+    SELECT
+      f.id,
+      f.flat_number,
+      b.id AS block_id,
+      b.name AS block_name,
+      b.society_id
+    FROM flats f
+    JOIN blocks b
+      ON b.id = f.block_id
+    WHERE b.society_id = $1
+      AND lower(trim(b.name)) = lower(trim($2))
+      AND lower(trim(f.flat_number)) = lower(trim($3))
+    LIMIT 1
+  `;
+
+  const r = await pool.query(q, [
+    params.societyId,
+    params.blockName,
+    params.flatNumber
+  ]);
+
+  return r.rows[0] ?? null;
+}
 
   static async listEntries(params: {
-    societyId: string;
-    gateId?: string | null;
-    flatId?: string | null;
-    from?: Date | null;
-    to?: Date | null;
-    limit: number;
-    offset: number;
-  }) {
-    const q = `
-      SELECT *
-      FROM visitor_entries
-      WHERE society_id = $1
-        AND ($2::uuid IS NULL OR gate_id = $2)
-        AND ($3::uuid IS NULL OR flat_id = $3)
-        AND ($4::timestamptz IS NULL OR created_at >= $4)
-        AND ($5::timestamptz IS NULL OR created_at <= $5)
-      ORDER BY created_at DESC
-      LIMIT $6 OFFSET $7
-    `;
-    const r = await pool.query(q, [
-      params.societyId,
-      params.gateId ?? null,
-      params.flatId ?? null,
-      params.from ?? null,
-      params.to ?? null,
-      params.limit,
-      params.offset
-    ]);
-    return r.rows;
-  }
+  societyId: string;
+  gateId?: string | null;
+  flatId?: string | null;
+  from?: Date | null;
+  to?: Date | null;
+  limit: number;
+  offset: number;
+}) {
+  const q = `
+    SELECT
+      ve.*,
+      f.flat_number,
+      b.name AS block_name,
+      g.name AS gate_name,
+      vr.status AS request_status,
+      vr.rejected_reason AS request_rejected_reason
+    FROM visitor_entries ve
+    LEFT JOIN flats f
+      ON f.id = ve.flat_id
+    LEFT JOIN blocks b
+      ON b.id = f.block_id
+    LEFT JOIN gates g
+      ON g.id = ve.gate_id
+    LEFT JOIN visitor_requests vr
+      ON vr.id = ve.visitor_request_id
+    WHERE ve.society_id = $1
+      AND ($2::uuid IS NULL OR ve.gate_id = $2)
+      AND ($3::uuid IS NULL OR ve.flat_id = $3)
+      AND ($4::timestamptz IS NULL OR ve.created_at >= $4)
+      AND ($5::timestamptz IS NULL OR ve.created_at <= $5)
+    ORDER BY ve.created_at DESC
+    LIMIT $6 OFFSET $7
+  `;
+
+  const r = await pool.query(q, [
+    params.societyId,
+    params.gateId ?? null,
+    params.flatId ?? null,
+    params.from ?? null,
+    params.to ?? null,
+    params.limit,
+    params.offset
+  ]);
+
+  return r.rows;
+}
 
   // --- Notifications table writes (Observer-style later) ---
   static async enqueueNotification(params: {
